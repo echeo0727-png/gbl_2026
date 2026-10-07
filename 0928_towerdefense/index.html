@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>숲길 타워디펜스</title>
+<style>
+  *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#17251f;color:#f5f2df;font:14px Arial,"Malgun Gothic",sans-serif}
+  main{width:800px}h1{font-size:22px;margin:0 0 8px}canvas{display:block;width:800px;height:600px;border:2px solid #d4c69b;background:#91b768;cursor:crosshair}.note{color:#d9dfcc}
+</style>
+<main><h1>숲길 타워디펜스</h1><canvas id="game" width="800" height="600"></canvas><p class="note">빈칸 클릭: 타워 설치(50골드) · 적 처치: +20골드 · 시작/재시작: 화면 클릭</p></main>
+<script>
+const canvas=document.querySelector("canvas"),ctx=canvas.getContext("2d"),size=50,top=100;
+const path=[[0,2],[1,2],[2,2],[3,2],[4,2],[4,3],[4,4],[4,5],[5,5],[6,5],[7,5],[7,4],[7,3],[7,2],[8,2],[9,2],[10,2],[10,3],[10,4],[10,5],[11,5],[12,5],[13,5],[13,6],[13,7],[14,7],[15,7]],
+  pathSet=new Set(path.map(([x,y])=>`${x},${y}`));
+let towers=[],enemies=[],shots=[],gold=150,health=10,wave=0,sent=0,timer=0,state="ready",last=0;
+const center=([x,y])=>[x*size+25,top+y*size+25],reset=()=>{towers=[];enemies=[];shots=[];gold=150;health=10;wave=0;sent=0;timer=0;state="playing"};
+function nextWave(){wave++;sent=0;timer=.5}
+function spawn(){const [x,y]=center(path[0]),hp=2+Math.floor((wave-1)/3);enemies.push({x,y,i:1,hp,max:hp,speed:48+wave*2})}
+function update(dt){
+  if(state!=="playing")return;
+  if(!wave)nextWave();
+  timer-=dt;if(sent<6&&timer<=0){spawn();sent++;timer=1.15}
+  for(const e of enemies){const [x,y]=center(path[e.i]||path.at(-1)),dx=x-e.x,dy=y-e.y,d=Math.hypot(dx,dy),step=e.speed*dt;
+    if(d<=step){e.x=x;e.y=y;if(++e.i===path.length){e.escaped=true;if(--health<=0)state="lost"}}else{e.x+=dx/d*step;e.y+=dy/d*step}}
+  enemies=enemies.filter(e=>!e.escaped&&e.hp>0);
+  for(const t of towers){t.cooldown-=dt;if(t.cooldown<=0){const e=enemies.find(e=>Math.hypot(e.x-t.x,e.y-t.y)<145);if(e){shots.push({x:t.x,y:t.y,target:e});t.cooldown=.65}}}
+  for(const s of shots){const e=s.target;if(!enemies.includes(e)){s.done=true;continue}const dx=e.x-s.x,dy=e.y-s.y,d=Math.hypot(dx,dy),step=330*dt;
+    if(d<step+5){if(e.hp>0&&!--e.hp)gold+=20;s.done=true}else{s.x+=dx/d*step;s.y+=dy/d*step}}
+  shots=shots.filter(s=>!s.done);enemies=enemies.filter(e=>e.hp>0);
+  if(sent===6&&!enemies.length){if(wave===8)state="won";else if(timer<=0)nextWave();else timer=Math.min(timer,1.4)}
+}
+function draw(){
+  ctx.clearRect(0,0,800,600);ctx.fillStyle="#263b32";ctx.fillRect(0,0,800,90);ctx.fillStyle="#fff4c7";ctx.font="bold 21px Arial";ctx.fillText("숲길 타워디펜스",20,31);ctx.font="16px Arial";ctx.fillText(`골드 ${gold}   체력 ${health}   웨이브 ${Math.min(wave||1,8)}/8   타워 50G`,22,66);
+  ctx.fillStyle="#91b768";ctx.fillRect(0,top,800,500);ctx.fillStyle="#d9bd7a";for(const [x,y] of path)ctx.fillRect(x*size,top+y*size,size,size);
+  ctx.strokeStyle="#41644255";for(let x=0;x<=16;x++){ctx.beginPath();ctx.moveTo(x*size,top);ctx.lineTo(x*size,600);ctx.stroke()}for(let y=0;y<=10;y++){ctx.beginPath();ctx.moveTo(0,top+y*size);ctx.lineTo(800,top+y*size);ctx.stroke()}
+  for(const t of towers){ctx.fillStyle="#285a91";ctx.beginPath();ctx.arc(t.x,t.y,17,0,7);ctx.fill();ctx.fillStyle="#b8e1ff";ctx.beginPath();ctx.arc(t.x,t.y,7,0,7);ctx.fill()}
+  for(const e of enemies){ctx.fillStyle="#a83d35";ctx.beginPath();ctx.arc(e.x,e.y,15,0,7);ctx.fill();ctx.fillStyle="#332522";ctx.fillRect(e.x-15,e.y-23,30,5);ctx.fillStyle="#ef7561";ctx.fillRect(e.x-15,e.y-23,30*e.hp/e.max,5)}
+  ctx.fillStyle="#fff3a1";for(const s of shots){ctx.beginPath();ctx.arc(s.x,s.y,5,0,7);ctx.fill()}
+  if(state!=="playing"){ctx.fillStyle="#0f1916b8";ctx.fillRect(0,90,800,510);ctx.textAlign="center";ctx.fillStyle="#fff4c7";ctx.font="bold 34px Arial";ctx.fillText(state==="ready"?"길을 지켜 주세요!":state==="won"?"승리! 숲을 지켰어요":"게임 끝!",400,275);ctx.font="18px Arial";ctx.fillText(state==="ready"?"화면을 클릭해 시작하고 빈칸에 타워를 설치하세요":"화면을 클릭해 다시 시작하세요",400,315);ctx.textAlign="left"}
+}
+function loop(now){const dt=Math.min((now-last)/1000||0,.05);last=now;update(dt);draw();requestAnimationFrame(loop)}
+canvas.onclick=event=>{
+  if(state==="ready"){state="playing";return}if(state==="won"||state==="lost"){reset();return}
+  const r=canvas.getBoundingClientRect(),x=Math.floor((event.clientX-r.left)*800/r.width/size),y=Math.floor(((event.clientY-r.top)*600/r.height-top)/size),key=`${x},${y}`;
+  if(x<0||x>=16||y<0||y>=10||pathSet.has(key)||gold<50||towers.some(t=>t.x===x*size+25&&t.y===top+y*size+25))return;
+  gold-=50;towers.push({x:x*size+25,y:top+y*size+25,cooldown:0});
+};
+requestAnimationFrame(loop);
+</script>
+</html>
